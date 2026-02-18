@@ -29,19 +29,15 @@ const DriveSwipePro = () => {
   // --- STATE MANAGEMENT ---
   const [mode, setMode] = useState<'practice' | 'game'>('practice');
   const [cardIndex, setCardIndex] = useState(0);
-  const [gameTime, setGameTime] = useState(5);
   const [timer, setTimer] = useState(5);
   const [showAnswerModal, setShowAnswerModal] = useState(false);
   const [isCorrect, setIsCorrect] = useState(false);
   const [selectedAnswer, setSelectedAnswer] = useState<string | boolean | null>(null);
-  const [swipeDirection, setSwipeDirection] = useState<'left' | 'right' | 'up' | null>(null);
-  const [showSettingsModal, setShowSettingsModal] = useState(false);
 
   // Animation values
   const pan = useRef(new Animated.ValueXY()).current;
   const rotate = useRef(new Animated.Value(0)).current;
   const scale = useRef(new Animated.Value(1)).current;
-  const gradientOpacity = useRef(new Animated.Value(0)).current;
 
   // Mock Data
   const cardDeck: CardData[] = [
@@ -91,70 +87,44 @@ const DriveSwipePro = () => {
       onPanResponderMove: (evt, { dx, dy }) => {
         pan.x.setValue(dx);
         pan.y.setValue(dy);
-        const rotation = (dx / width) * 30; // Tinder-style: max 30 degrees
+        const rotation = (dx / width) * 360;
         rotate.setValue(rotation);
-        const scaleValue = 1 - Math.abs(dx) / (width * 3);
-        scale.setValue(Math.max(scaleValue, 0.95));
-        
-        // Gradient opacity based on horizontal swipe
-        const opacityValue = Math.min(Math.abs(dx) / (width * 0.3), 1);
-        gradientOpacity.setValue(opacityValue);
+        const scaleValue = 1 - Math.abs(dx) / (width * 2);
+        scale.setValue(Math.max(scaleValue, 0.9));
       },
       onPanResponderRelease: (evt, { dx, dy, vx, vy }) => {
-        const horizontalThreshold = width * 0.3;
-        const verticalThreshold = height * 0.25;
-        const isHorizontalSwipeOut = Math.abs(dx) > horizontalThreshold || Math.abs(vx) > 0.5;
-        const isVerticalSwipeOut = dy < -verticalThreshold || vy < -0.8;
+        const threshold = width * 0.3;
+        const isSwipeOut = Math.abs(dx) > threshold || Math.abs(vx) > 0.5;
 
-        if (activeCard.type === 'swipe') {
-          if (isVerticalSwipeOut) {
-            // Swipe up - "Not sure"
-            setSwipeDirection('up');
-            Animated.timing(pan, {
-              toValue: { x: 0, y: -height },
-              duration: 300,
-              useNativeDriver: false,
-            }).start(() => {
-              resetCardPosition();
-              nextCard();
-              setSwipeDirection(null);
-            });
-          } else if (isHorizontalSwipeOut) {
-            const swipedRight = dx > 0;
-            const userAnswer = swipedRight;
-            const correct = userAnswer === activeCard.correctAnswer;
-            handleSwipeAnswer(correct, userAnswer);
-            setSwipeDirection(swipedRight ? 'right' : 'left');
+        if (isSwipeOut && activeCard.type === 'swipe') {
+          const swipedRight = dx > 0;
+          const userAnswer = swipedRight;
+          const correct = userAnswer === activeCard.correctAnswer;
+          handleSwipeAnswer(correct, userAnswer);
 
-            Animated.timing(pan, {
-              toValue: { x: swipedRight ? width : -width, y: dy },
-              duration: 300,
-              useNativeDriver: false,
-            }).start(() => {
-              resetCardPosition();
-              nextCard();
-              setSwipeDirection(null);
-            });
-          } else {
+          Animated.timing(pan, {
+            toValue: { x: swipedRight ? width : -width, y: dy },
+            duration: 300,
+            useNativeDriver: false,
+          }).start(() => {
+            resetCardPosition();
+            nextCard();
+          });
+        } else {
           Animated.parallel([
-              Animated.spring(pan, {
-                toValue: { x: 0, y: 0 },
-                useNativeDriver: false,
-              }),
-              Animated.spring(rotate, {
-                toValue: 0,
-                useNativeDriver: false,
-              }),
-              Animated.spring(scale, {
-                toValue: 1,
-                useNativeDriver: false,
-              }),
-              Animated.spring(gradientOpacity, {
-                toValue: 0,
-                useNativeDriver: false,
-              }),
-            ]).start();
-          }
+            Animated.spring(pan, {
+              toValue: { x: 0, y: 0 },
+              useNativeDriver: false,
+            }),
+            Animated.spring(rotate, {
+              toValue: 0,
+              useNativeDriver: false,
+            }),
+            Animated.spring(scale, {
+              toValue: 1,
+              useNativeDriver: false,
+            }),
+          ]).start();
         }
       },
     })
@@ -165,7 +135,6 @@ const DriveSwipePro = () => {
     pan.y.setValue(0);
     rotate.setValue(0);
     scale.setValue(1);
-    gradientOpacity.setValue(0);
   };
 
   const handleSwipeAnswer = (correct: boolean, answer: boolean) => {
@@ -191,9 +160,6 @@ const DriveSwipePro = () => {
     setCardIndex((prev) => (prev + 1) % cardDeck.length);
     setSelectedAnswer(null);
     resetCardPosition();
-    if (mode === 'game') {
-      setTimer(gameTime);
-    }
   };
 
   // Simple countdown effect for Game Mode
@@ -204,16 +170,6 @@ const DriveSwipePro = () => {
     }
     return () => clearInterval(interval);
   }, [mode, timer]);
-
-  // Handle timer expiration in game mode
-  useEffect(() => {
-    if (mode === 'game' && timer === 0 && selectedAnswer === null) {
-      // Timer expired without answering - treat as wrong
-      setIsCorrect(false);
-      setSelectedAnswer('timeout');
-      setShowAnswerModal(true);
-    }
-  }, [timer, mode, selectedAnswer]);
 
   const resetDemo = () => {
     setTimer(5);
@@ -241,105 +197,48 @@ const DriveSwipePro = () => {
     ],
   };
 
-  // Gradient color based on swipe direction
-  const gradientColor = pan.x.interpolate({
-    inputRange: [-width * 0.5, 0, width * 0.5],
-    outputRange: ['#ff6b6b', '#ffffff', '#51cf66'], // red, white, green
-  });
-
   return (
     <View style={styles.container}>
+      {/* --- DEV CONTROLS --- */}
+      <View style={styles.devControls}>
+        <Text style={styles.devText}>{mode.toUpperCase()} Mode</Text>
+        <TouchableOpacity onPress={() => setMode(mode === 'practice' ? 'game' : 'practice')}>
+          <Text style={styles.devButton}>Toggle</Text>
+        </TouchableOpacity>
+        <TouchableOpacity onPress={resetDemo}>
+          <Text style={styles.devButton}>Next Card</Text>
+        </TouchableOpacity>
+      </View>
+
       {/* --- HEADER --- */}
       <View style={styles.header}>
-        {/* Settings Icon */}
-        <TouchableOpacity style={styles.headerIcon} onPress={() => setShowSettingsModal(true)}>
-          <Feather name="settings" size={24} color="#1a1a1a" />
-        </TouchableOpacity>
-
-        {/* Game Mode Toggle Capsule */}
-        <View style={styles.modeToggle}>
-          <TouchableOpacity
-            style={[
-              styles.modeToggleButton,
-              mode === 'practice' && styles.modeToggleButtonActive,
-            ]}
-            onPress={() => setMode('practice')}
-          >
-            <Text
-              style={[
-                styles.modeToggleText,
-                mode === 'practice' && styles.modeToggleTextActive,
-              ]}
-            >
-              Practice
-            </Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[
-              styles.modeToggleButton,
-              mode === 'game' && styles.modeToggleButtonActive,
-            ]}
-            onPress={() => setMode('game')}
-          >
-            <Text
-              style={[
-                styles.modeToggleText,
-                mode === 'game' && styles.modeToggleTextActive,
-              ]}
-            >
-              Game
-            </Text>
-          </TouchableOpacity>
+        <View>
+          <Text style={styles.title}>DriveSwipe</Text>
+          <Text style={styles.subtitle}>
+            {cardIndex + 1} / {cardDeck.length}
+          </Text>
         </View>
-
-        {/* User Icon */}
-        <TouchableOpacity style={styles.headerIcon}>
-          <Feather name="user" size={24} color="#1a1a1a" />
-        </TouchableOpacity>
+        <View style={styles.progressTrack}>
+          <View
+            style={[
+              styles.progressFill,
+              { width: `${((cardIndex + 1) / cardDeck.length) * 100}%` },
+            ]}
+          />
+        </View>
       </View>
 
       {/* --- MAIN INTERFACE --- */}
       <View style={styles.cardArea}>
-        {/* Background stack effect - Display next cards */}
-        {[2, 1].map((offset) => {
-          const stackCardIndex = (cardIndex + offset) % cardDeck.length;
-          const stackCard = cardDeck[stackCardIndex];
-          return (
-            <View
-              key={offset}
-              style={[
-                styles.stackCard,
-                {
-                  top: offset * 12,
-                  transform: [{ scale: 1 - offset * 0.04 }],
-                },
-              ]}
-            >
-              <View style={styles.visualContainer}>
-                <Text style={styles.emojiImage}>{stackCard.image}</Text>
-              </View>
-              <View style={styles.questionContainer}>
-                <Text style={styles.questionText}>{stackCard.question}</Text>
-              </View>
-            </View>
-          );
-        })}
+        {/* Background stack effect */}
+        <View style={styles.stackCard} />
+        <View style={styles.stackCard} />
 
         {/* === THE CARD === */}
         <Animated.View
           style={[styles.card, cardAnimatedStyle, { zIndex: 3 }]}
           {...panResponder.panHandlers}
         >
-          {/* Gradient overlay for swipe feedback */}
-          <Animated.View
-            style={[
-              styles.gradientOverlay,
-              {
-                opacity: gradientOpacity,
-                backgroundColor: gradientColor,
-              },
-            ]}
-          />
           {/* THE HUD TIMER (Only visible in Game Mode) */}
           {mode === 'game' && (
             <View style={styles.timerContainer}>
@@ -405,10 +304,6 @@ const DriveSwipePro = () => {
               <Text style={styles.controlHintText}>Unsafe</Text>
             </View>
             <View style={styles.controlHint}>
-              <Feather name="arrow-up" size={20} color="#ffd700" />
-              <Text style={styles.controlHintText}>Not Sure</Text>
-            </View>
-            <View style={styles.controlHint}>
               <Text style={styles.controlHintText}>Safe</Text>
               <Feather name="arrow-right" size={20} color="#51cf66" />
             </View>
@@ -432,12 +327,10 @@ const DriveSwipePro = () => {
                 ]}
               >
                 <Text style={styles.answerLabel}>
-                  {isCorrect ? 'Your Answer' : selectedAnswer === 'timeout' ? 'Time Expired' : 'Your Answer'}
+                  {isCorrect ? 'Your Answer' : 'Correct Answer'}
                 </Text>
                 <Text style={styles.answerValue}>
-                  {selectedAnswer === 'timeout'
-                    ? "Time's up!"
-                    : activeCard.type === 'swipe'
+                  {activeCard.type === 'swipe'
                     ? selectedAnswer === true
                       ? 'Safe (Right)'
                       : 'Unsafe (Left)'
@@ -478,87 +371,6 @@ const DriveSwipePro = () => {
           </View>
         </View>
       </Modal>
-
-      {/* === SETTINGS MODAL === */}
-      <Modal transparent visible={showSettingsModal} animationType="slide">
-        <View style={styles.settingsContainer}>
-          {/* Header */}
-          <View style={styles.settingsHeader}>
-            <Text style={styles.settingsTitle}>Settings</Text>
-            <TouchableOpacity onPress={() => setShowSettingsModal(false)}>
-              <Feather name="x" size={24} color="#1a1a1a" />
-            </TouchableOpacity>
-          </View>
-
-          <ScrollView style={styles.settingsContent} showsVerticalScrollIndicator={false}>
-            {/* Game Time Setting */}
-            <View style={styles.settingGroup}>
-              <View style={styles.settingLabelContainer}>
-                <Text style={styles.settingLabel}>Game Mode Time</Text>
-                <Text style={styles.settingValue}>{gameTime}s</Text>
-              </View>
-              <Text style={styles.settingDescription}>
-                How long you have to answer each question in game mode
-              </Text>
-              
-              {/* Custom Slider */}
-              <View style={styles.customSlider}>
-                {/* Progress Bar */}
-                <View style={styles.progressBarContainer}>
-                  <View
-                    style={[
-                      styles.progressBar,
-                      { width: `${((gameTime - 3) / (30 - 3)) * 100}%` },
-                    ]}
-                  />
-                </View>
-                
-                {/* Plus/Minus Buttons */}
-                <View style={styles.sliderControls}>
-                  <TouchableOpacity
-                    style={styles.sliderButton}
-                    onPress={() => setGameTime(Math.max(3, gameTime - 1))}
-                  >
-                    <Text style={styles.sliderButtonText}>−</Text>
-                  </TouchableOpacity>
-                  
-                  <Text style={styles.sliderValueDisplay}>{gameTime}s</Text>
-                  
-                  <TouchableOpacity
-                    style={styles.sliderButton}
-                    onPress={() => setGameTime(Math.min(30, gameTime + 1))}
-                  >
-                    <Text style={styles.sliderButtonText}>+</Text>
-                  </TouchableOpacity>
-                </View>
-              </View>
-              
-              <View style={styles.rangeLabels}>
-                <Text style={styles.rangeLabel}>3s</Text>
-                <Text style={styles.rangeLabel}>30s</Text>
-              </View>
-            </View>
-
-            {/* Info Section */}
-            <View style={styles.infoSection}>
-              <Text style={styles.infoTitle}>About Timer</Text>
-              <Text style={styles.infoText}>
-                • Practice Mode: Answer at your own pace{'\n'}
-                • Game Mode: Race against the clock{'\n'}
-                • Time expires: Question treated as incorrect
-              </Text>
-            </View>
-          </ScrollView>
-
-          {/* Close Button */}
-          <TouchableOpacity
-            style={styles.settingsCloseButton}
-            onPress={() => setShowSettingsModal(false)}
-          >
-            <Text style={styles.settingsCloseButtonText}>Done</Text>
-          </TouchableOpacity>
-        </View>
-      </Modal>
     </View>
   );
 };
@@ -570,47 +382,54 @@ const styles = StyleSheet.create({
     paddingTop: 50,
   },
 
+  // Dev Controls
+  devControls: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    paddingVertical: 8,
+    backgroundColor: '#ffe0e0',
+    borderBottomWidth: 1,
+    borderBottomColor: '#ffcccc',
+  },
+  devText: {
+    fontWeight: 'bold',
+    fontSize: 12,
+    color: '#666',
+  },
+  devButton: {
+    color: '#d32f2f',
+    fontWeight: '600',
+    fontSize: 12,
+  },
+
   // Header
   header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
     paddingHorizontal: 20,
-    paddingVertical: 12,
+    paddingVertical: 15,
     marginBottom: 10,
   },
-  headerIcon: {
-    padding: 8,
-    borderRadius: 50,
-  },
-  modeToggle: {
-    flexDirection: 'row',
-    backgroundColor: '#e0e0e0',
-    borderRadius: 20,
-    padding: 4,
-    gap: 8,
-  },
-  modeToggleButton: {
-    paddingVertical: 8,
-    paddingHorizontal: 16,
-    borderRadius: 16,
-    backgroundColor: 'transparent',
-  },
-  modeToggleButtonActive: {
-    backgroundColor: '#fff',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 2,
-  },
-  modeToggleText: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: '#999',
-  },
-  modeToggleTextActive: {
+  title: {
+    fontSize: 28,
+    fontWeight: '700',
     color: '#1a1a1a',
+    marginBottom: 4,
+  },
+  subtitle: {
+    fontSize: 14,
+    color: '#999',
+    marginBottom: 10,
+  },
+  progressTrack: {
+    width: '100%',
+    height: 6,
+    backgroundColor: '#e0e0e0',
+    borderRadius: 3,
+    overflow: 'hidden',
+  },
+  progressFill: {
+    height: '100%',
+    backgroundColor: '#51cf66',
+    borderRadius: 3,
   },
 
   cardArea: {
@@ -633,7 +452,6 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.08,
     shadowRadius: 16,
     elevation: 3,
-    overflow: 'hidden',
   },
 
   // Card Styles
@@ -650,17 +468,6 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
     position: 'relative',
     zIndex: 10,
-  },
-
-  // Gradient Overlay
-  gradientOverlay: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    borderRadius: 24,
-    zIndex: 5,
   },
 
   // TIMER STYLES
@@ -870,154 +677,4 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     fontSize: 16,
   },
-
-  // Settings Modal Styles
-  settingsContainer: {
-    flex: 1,
-    backgroundColor: '#f8f9fa',
-    paddingTop: 50,
-  },
-  settingsHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingHorizontal: 20,
-    paddingVertical: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: '#e0e0e0',
-  },
-  settingsTitle: {
-    fontSize: 24,
-    fontWeight: '700',
-    color: '#1a1a1a',
-  },
-  settingsContent: {
-    flex: 1,
-    paddingHorizontal: 20,
-    paddingVertical: 20,
-  },
-  settingGroup: {
-    backgroundColor: '#fff',
-    borderRadius: 16,
-    padding: 16,
-    marginBottom: 20,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.05,
-    shadowRadius: 4,
-    elevation: 2,
-  },
-  settingLabelContainer: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 8,
-  },
-  settingLabel: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: '#1a1a1a',
-  },
-  settingValue: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: '#51cf66',
-  },
-  settingDescription: {
-    fontSize: 13,
-    color: '#999',
-    marginBottom: 16,
-    lineHeight: 18,
-  },
-  customSlider: {
-    marginVertical: 12,
-    gap: 12,
-  },
-  progressBarContainer: {
-    width: '100%',
-    height: 8,
-    backgroundColor: '#e0e0e0',
-    borderRadius: 4,
-    overflow: 'hidden',
-  },
-  progressBar: {
-    height: '100%',
-    backgroundColor: '#51cf66',
-    borderRadius: 4,
-  },
-  sliderControls: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    gap: 12,
-  },
-  sliderButton: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    backgroundColor: '#f0f0f0',
-    justifyContent: 'center',
-    alignItems: 'center',
-    borderWidth: 2,
-    borderColor: '#e0e0e0',
-  },
-  sliderButtonText: {
-    fontSize: 24,
-    fontWeight: '700',
-    color: '#1a1a1a',
-  },
-  sliderValueDisplay: {
-    flex: 1,
-    textAlign: 'center',
-    fontSize: 16,
-    fontWeight: '700',
-    color: '#51cf66',
-  },
-  rangeLabels: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginTop: 8,
-  },
-  rangeLabel: {
-    fontSize: 12,
-    color: '#999',
-    fontWeight: '600',
-  },
-  infoSection: {
-    backgroundColor: '#fff',
-    borderRadius: 16,
-    padding: 16,
-    marginBottom: 20,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.05,
-    shadowRadius: 4,
-    elevation: 2,
-  },
-  infoTitle: {
-    fontSize: 14,
-    fontWeight: '700',
-    color: '#1a1a1a',
-    marginBottom: 12,
-  },
-  infoText: {
-    fontSize: 13,
-    color: '#666',
-    lineHeight: 20,
-  },
-  settingsCloseButton: {
-    backgroundColor: '#51cf66',
-    marginHorizontal: 20,
-    marginVertical: 20,
-    paddingVertical: 14,
-    borderRadius: 12,
-    alignItems: 'center',
-  },
-  settingsCloseButtonText: {
-    color: '#fff',
-    fontWeight: '700',
-    fontSize: 16,
-  },
 });
-
-export default DriveSwipePro;
